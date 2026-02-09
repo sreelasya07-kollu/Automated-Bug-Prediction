@@ -183,13 +183,11 @@ def analyze(text):
     print("Severity Level:", level)
     print("Priority Score:", round(priority, 2))
     print("=" * 50)
-
-
 # ============================================
 # AUTO DETECT MODE
 # ============================================
 
-print("\n🚀 AUTO DETECT MODE STARTED")
+print("\n AUTO DETECT MODE STARTED")
 print("Bug types: Functional Error | Design Level | Systematic | Performance")
 print("Type bug description (or type 'exit'):\n")
 
