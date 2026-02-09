@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>Bug Analysis – bugpredict</title>
+  <link rel="stylesheet" href="../styles/app.css">
+</head>
+<body>
+  <header class="app-header">
+    <a href="../dashboard/" class="logo">BugPredict</a>
+    <nav class="nav">
+      <a href="../dashboard/">Dashboard</a>
+      <a href="../editor/">Editor</a>
+    </nav>
+  </header>
+  <main class="main">
+    <a href="../dashboard/" class="back-link">← Back to Dashboard</a>
+    <h1 class="page-title">Bug Summary</h1>
+    <p class="page-subtitle">Sorted by priority (fix first at top). Shows bug type, severity, estimated debug time, priority score, root cause, and risk if you delay fixing.</p>
+    <div id="empty-state" class="empty-state" style="display: none;">
+      <p>No analysis results yet.</p>
+      <p>Link project files from the Dashboard or analyze code in the Editor, then view results here.</p>
+      <a href="../dashboard/" class="btn">Go to Dashboard</a>
+    </div>
+    <div class="analysis-table-wrap" id="analysis-table-wrap">
+      <table class="analysis-table">
+        <thead>
+          <tr>
+            <th>File / Source</th>
+            <th>Bug Type</th>
+            <th>Severity</th>
+            <th>Est. Debug Time</th>
+            <th>Priority Score</th>
+            <th>Possible Root Cause</th>
+            <th>Risk If Delayed</th>
+          </tr>
+        </thead>
+        <tbody id="analysis-tbody">
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top: 1.5rem;"><a href="../editor/" class="btn btn-secondary">Analyze more code in Editor</a></p>
+  </main>
+  <script src="../scripts/config.js"></script>
+  <script src="../scripts/app.js"></script>
+  <script>
+    (function() {
+      var tbody = document.getElementById('analysis-tbody');
+      var emptyState = document.getElementById('empty-state');
+      var tableWrap = document.getElementById('analysis-table-wrap');
+      if (!tbody) return;
+      var results = [];
+      try {
+        var raw = localStorage.getItem('bugpredict_analysis_results');
+        if (raw) results = JSON.parse(raw);
+      } catch (e) {}
+      if (!results || !results.length) {
+        if (emptyState) emptyState.style.display = 'block';
+        if (tableWrap) tableWrap.style.display = 'none';
+        return;
+      }
+      if (emptyState) emptyState.style.display = 'none';
+      if (tableWrap) tableWrap.style.display = 'block';
+      results.sort(function(a, b) { return (b.priorityScore || 0) - (a.priorityScore || 0); });
+      var rows = results.map(function(r) {
+        var severity = r.severity || 'Low';
+        var score = r.priorityScore != null ? r.priorityScore : 0;
+        var c = severity === 'High' ? 'badge-high' : severity === 'Medium' ? 'badge-medium' : 'badge-low';
+        var fillClass = severity === 'High' ? 'high' : severity === 'Medium' ? 'medium' : 'low';
+        var pct = Math.min(100, Math.max(0, score)) + '%';
+        return '<tr><td>' + (r.source || '—') + '</td><td>' + (r.bugType || '—') + '</td><td><span class="badge ' + c + '">' + severity + '</span></td><td>' + (r.debugTime || '—') + '</td><td><div class="priority-bar"><div class="priority-fill ' + fillClass + '"><span style="width:' + pct + '"></span></div> ' + score + '</div></td><td>' + (r.rootCause || '—') + '</td><td><span class="badge ' + c + '">' + (r.delayRisk || '—') + '</span></td></tr>';
+      }).join('');
+      tbody.innerHTML = rows;
+    })();
+  </script>
+</body>
+</html>

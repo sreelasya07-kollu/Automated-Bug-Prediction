@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>Code Editor – bugpredict</title>
+  <link rel="stylesheet" href="../styles/app.css">
+</head>
+<body>
+  <header class="app-header">
+    <a href="../dashboard/" class="logo">BugPredict</a>
+    <nav class="nav">
+      <a href="../dashboard/">Dashboard</a>
+      <a href="../analysis/">Analysis</a>
+    </nav>
+  </header>
+  <main class="main">
+    <a href="../dashboard/" class="back-link">← Back to Dashboard</a>
+    <h1 class="page-title">Code Editor</h1>
+    <p class="page-subtitle">Paste or type code below. Bug prediction (type, severity, debug time, priority, root cause, delay risk) updates as you type.</p>
+    <div class="editor-layout">
+      <div class="code-area">
+        <label for="code-input">Source code</label>
+        <div class="code-editor-wrap">
+          <div class="line-gutter" id="line-gutter" aria-hidden="true">1</div>
+          <div class="code-lines" id="code-lines">
+            <div class="line-highlights-layer" id="line-highlights-layer"></div>
+            <textarea id="code-input" placeholder="Paste or type your code here..." spellcheck="false" autocomplete="off"></textarea>
+          </div>
+        </div>
+      </div>
+      <aside class="bug-panel">
+        <h2>Bug Analysis</h2>
+        <div class="metric">
+          <div class="metric-label">Bug Type</div>
+          <div class="metric-value" id="out-bug-type">—</div>
+          <div class="metric-desc" id="out-bug-type-desc">Analyzing...</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Severity</div>
+          <div class="metric-value" id="out-severity">—</div>
+          <div class="metric-desc" id="out-severity-desc">Low / Medium / High</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Est. Debug Time</div>
+          <div class="metric-value" id="out-debug-time">—</div>
+          <div class="metric-desc" id="out-debug-time-desc">Time to fix</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Priority Score</div>
+          <div class="metric-value" id="out-priority">—</div>
+          <div class="metric-desc" id="out-priority-desc">Higher = fix first (0–100)</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Possible Root Cause</div>
+          <div class="metric-value" id="out-root-cause">—</div>
+          <div class="metric-desc" id="out-root-cause-desc">Likely cause of the issue</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Risk If Delayed</div>
+          <div class="metric-value" id="out-delay-risk">—</div>
+          <div class="metric-desc" id="out-delay-risk-desc">Impact of not fixing now</div>
+        </div>
+        <div class="errors-list" id="errors-list" style="display: none;">
+          <div class="errors-list-title">Errors by line</div>
+          <div id="errors-list-content"></div>
+        </div>
+        <a href="../analysis/" id="view-analysis-link" class="btn-link">View full analysis →</a>
+      </aside>
+    </div>
+  </main>
+  <script src="../scripts/config.js"></script>
+  <script src="../scripts/app.js"></script>
+  <script>
+    (function() {
+      var textarea = document.getElementById('code-input');
+      var lineGutter = document.getElementById('line-gutter');
+      var codeLines = document.getElementById('code-lines');
+      var lineHighlightsLayer = document.getElementById('line-highlights-layer');
+      var errorsList = document.getElementById('errors-list');
+      var errorsListContent = document.getElementById('errors-list-content');
+      var pending = null;
+      var LINE_HEIGHT_EM = 1.5;
+
+      function set(id, value, isBadge) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var empty = value === undefined || value === null || value === '' || value === 'null' || value === 'undefined';
+        var display = empty ? '—' : String(value);
+        if (isBadge && !empty && display !== '—') {
+          var c = (display === 'High') ? 'badge-high' : (display === 'Medium') ? 'badge-medium' : 'badge-low';
+          el.innerHTML = '<span class="badge ' + c + '">' + display + '</span>';
+        } else {
+          el.textContent = display;
+        }
+      }
+
+      function updateLineGutterAndHighlights(code, errorLines) {
+        var lines = (code || '').split('\n');
+        var n = Math.max(1, lines.length);
+        var heightEm = (n * LINE_HEIGHT_EM) + 'em';
+        if (lineGutter) {
+          var nums = [];
+          for (var i = 1; i <= n; i++) nums.push(i);
+          lineGutter.textContent = nums.join('\n');
+          lineGutter.style.minHeight = heightEm;
+        }
+        if (codeLines) codeLines.style.minHeight = heightEm;
+        if (lineHighlightsLayer) {
+          lineHighlightsLayer.innerHTML = '';
+          lineHighlightsLayer.style.minHeight = heightEm;
+          var errSet = {};
+          if (errorLines && errorLines.length) {
+            for (var j = 0; j < errorLines.length; j++) errSet[errorLines[j]] = true;
+          }
+          for (var k = 1; k <= n; k++) {
+            var div = document.createElement('div');
+            div.className = 'line-highlight' + (errSet[k] ? ' error-line' : '');
+            div.style.top = 'calc(1rem + ' + ((k - 1) * LINE_HEIGHT_EM) + 'em)';
+            lineHighlightsLayer.appendChild(div);
+          }
+        }
+        if (textarea) {
+          textarea.style.height = heightEm;
+          textarea.style.minHeight = '380px';
+        }
+      }
+
+      function updateErrorsList(findings) {
+        if (!errorsList || !errorsListContent) return;
+        if (!findings || findings.length === 0) {
+          errorsList.style.display = 'none';
+          return;
+        }
+        errorsList.style.display = 'block';
+        var html = '';
+        for (var i = 0; i < findings.length; i++) {
+          var f = findings[i];
+          html += '<div class="error-item">';
+          html += '<span class="error-line-num">Line ' + (f.line || 1) + '</span>';
+          html += '<div><span class="error-message">' + (f.rootCause || f.type || '') + '</span>';
+          html += '<div class="error-type">' + (f.type || '') + ' • ' + (f.severity || '') + '</div></div>';
+          html += '</div>';
+        }
+        errorsListContent.innerHTML = html;
+      }
+
+      function applyResult(result) {
+        if (!result) {
+          result = { bugType: '—', bugTypeDesc: 'Enter code to analyze', severity: '—', severityDesc: '—', debugTime: '—', debugTimeDesc: '—', priorityScore: null, priorityDesc: '—', rootCause: '—', rootCauseDesc: '—', delayRisk: '—', delayRiskDesc: '—', findings: [] };
+        }
+        set('out-bug-type', result.bugType);
+        set('out-bug-type-desc', result.bugTypeDesc);
+        set('out-severity', result.severity, true);
+        set('out-severity-desc', result.severityDesc);
+        set('out-debug-time', result.debugTime);
+        set('out-debug-time-desc', result.debugTimeDesc);
+        set('out-priority', result.priorityScore != null ? result.priorityScore + ' / 100' : '—');
+        set('out-priority-desc', result.priorityDesc);
+        set('out-root-cause', result.rootCause);
+        set('out-root-cause-desc', result.rootCauseDesc);
+        set('out-delay-risk', result.delayRisk, true);
+        set('out-delay-risk-desc', result.delayRiskDesc);
+        var findings = result.findings || [];
+        var errorLines = findings.map(function(f) { return f.line; }).filter(Boolean);
+        var code = (textarea && textarea.value) ? textarea.value : '';
+        updateLineGutterAndHighlights(code, errorLines);
+        updateErrorsList(findings);
+      }
+      function mergeFindings(apiResult, code) {
+        var local = window.BugPredict && window.BugPredict.analyzeCodeLocal ? window.BugPredict.analyzeCodeLocal(code) : null;
+        var findings = (local && local.findings && local.findings.length) ? local.findings : (apiResult && apiResult.findings) || [];
+        var merged = Object.assign({}, apiResult || {});
+        merged.findings = findings;
+        return merged;
+      }
+
+      function updatePanel() {
+        var code = (textarea && textarea.value) ? textarea.value.trim() : '';
+        updateLineGutterAndHighlights((textarea && textarea.value) ? textarea.value : '', []);
+        if (window.BugPredict && window.BugPredict.analyzeCodeAsync) {
+          set('out-bug-type-desc', code ? 'Analyzing…' : 'Enter code to analyze');
+          if (pending) clearTimeout(pending);
+          pending = setTimeout(function() {
+            pending = null;
+            window.BugPredict.analyzeCodeAsync(code, function(result) {
+              applyResult(mergeFindings(result, code));
+            });
+          }, 200);
+          return;
+        }
+        var result = window.BugPredict && window.BugPredict.analyzeCode ? window.BugPredict.analyzeCode(code) : null;
+        applyResult(mergeFindings(result, code) || { bugType: '—', bugTypeDesc: 'Enter code to analyze', severity: '—', severityDesc: '—', debugTime: '—', debugTimeDesc: '—', priorityScore: null, priorityDesc: '—', rootCause: '—', rootCauseDesc: '—', delayRisk: '—', delayRiskDesc: '—', findings: [] });
+      }
+      if (textarea) {
+        textarea.addEventListener('input', function() { updatePanel(); });
+        textarea.addEventListener('paste', function() { updatePanel(); });
+      }
+      updatePanel();
+      var viewLink = document.getElementById('view-analysis-link');
+      if (viewLink) {
+        viewLink.addEventListener('click', function(e) {
+          e.preventDefault();
+          var code = (textarea && textarea.value) ? textarea.value.trim() : '';
+          var done = function(result) {
+            if (!result) result = { bugType: '—', severity: 'Low', debugTime: '—', priorityScore: 0, rootCause: '—', delayRisk: 'Low' };
+            var item = {
+              source: 'Editor',
+              bugType: result.bugType || '—',
+              severity: result.severity || 'Low',
+              debugTime: result.debugTime || '—',
+              priorityScore: result.priorityScore != null ? result.priorityScore : 0,
+              rootCause: result.rootCause || '—',
+              delayRisk: result.delayRisk || 'Low'
+            };
+            try {
+              var existing = [];
+              var raw = localStorage.getItem('bugpredict_analysis_results');
+              if (raw) try { existing = JSON.parse(raw); } catch (x) {}
+              existing.push(item);
+              existing.sort(function(a, b) { return (b.priorityScore || 0) - (a.priorityScore || 0); });
+              localStorage.setItem('bugpredict_analysis_results', JSON.stringify(existing));
+            } catch (x) {}
+            window.location.href = '../analysis/';
+          };
+          if (window.BugPredict && window.BugPredict.analyzeCodeAsync) {
+            window.BugPredict.analyzeCodeAsync(code, done);
+          } else {
+            var result = (window.BugPredict && window.BugPredict.analyzeCodeLocal) ? window.BugPredict.analyzeCodeLocal(code) : (window.BugPredict && window.BugPredict.analyzeCode) ? window.BugPredict.analyzeCode(code) : null;
+            done(result);
+          }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

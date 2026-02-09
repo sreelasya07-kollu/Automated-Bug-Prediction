@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>Dashboard – bugpredict</title>
+  <link rel="stylesheet" href="../styles/app.css">
+</head>
+<body>
+  <header class="app-header">
+    <a href="./" class="logo">BugPredict</a>
+    <nav class="nav">
+      <a href="../analysis/">Analysis</a>
+      <span id="user-name" class="user-badge"></span>
+    </nav>
+  </header>
+  <main class="main">
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle">Link project files or use the code editor. We analyze code to predict bug type, severity (low/medium/high), debug time, priority score, root cause, and risk if you delay fixing.</p>
+    <div class="cards">
+      <div class="card">
+        <h2>Link Project Files</h2>
+        <p>Select code files or a folder (e.g. pages) to analyze. We'll predict bugs, severity, and priority.</p>
+        <div class="file-picker-wrap">
+          <input type="file" id="file-picker" multiple accept=".java,.py,.js,.ts,.html,.htm,.css,.json,.go,.rb,.php,.xhtml">
+          <span class="file-picker-divider">or</span>
+          <input type="file" id="folder-picker" webkitdirectory directory multiple accept=".java,.py,.js,.ts,.html,.htm,.css,.json,.go,.rb,.php,.xhtml">
+        </div>
+      </div>
+      <div class="card">
+        <h2>Code Editor</h2>
+        <p>Paste or type code and get live bug predictions: type, severity, debug time, priority, root cause, and delay risk.</p>
+        <a href="../editor/" class="btn">Open Editor</a>
+      </div>
+      <div class="card">
+        <h2>Bug Analysis Results</h2>
+        <p>Full summary table: bug type, severity, estimated debug time, priority score, root cause, and risk if delayed.</p>
+        <a href="../analysis/" class="btn">View Analysis</a>
+      </div>
+    </div>
+  </main>
+  <script src="../scripts/config.js"></script>
+  <script src="../scripts/app.js"></script>
+  <script>
+    (function() {
+      var nameEl = document.getElementById('user-name');
+      if (nameEl) {
+        try {
+          var user = localStorage.getItem('bugpredict_user');
+          if (user) nameEl.textContent = user;
+        } catch (e) {}
+      }
+      var codeExts = /\.(java|py|js|ts|html|htm|css|json|go|rb|php|xhtml)$/i;
+      function runAnalysis(files) {
+        var list = Array.from(files).filter(function(f) { return codeExts.test(f.name) || f.name.indexOf('.') === -1; });
+        if (!list.length) list = Array.from(files);
+        if (!list.length) return;
+        var analyze = (window.BugPredict && window.BugPredict.analyzeCodeLocal) || (window.BugPredict && window.BugPredict.analyzeCode);
+        if (!analyze) {
+          try { localStorage.setItem('bugpredict_analysis_results', '[]'); } catch (e) {}
+          window.location.href = '../analysis/';
+          return;
+        }
+        var pending = list.length;
+        var results = [];
+        function onFileDone() {
+          pending--;
+          if (pending === 0) {
+            try {
+              results.sort(function(a, b) { return (b.priorityScore || 0) - (a.priorityScore || 0); });
+              localStorage.setItem('bugpredict_analysis_results', JSON.stringify(results));
+              window.location.href = '../analysis/';
+            } catch (e) {}
+          }
+        }
+        list.forEach(function(file) {
+          var reader = new FileReader();
+          reader.onload = function() {
+            var result = analyze(reader.result || '');
+            results.push({
+              source: file.webkitRelativePath || file.name,
+              bugType: result.bugType || '—',
+              severity: result.severity || 'Low',
+              debugTime: result.debugTime || '—',
+              priorityScore: result.priorityScore != null ? result.priorityScore : 0,
+              rootCause: result.rootCause || '—',
+              delayRisk: result.delayRisk || 'Low'
+            });
+            onFileDone();
+          };
+          reader.onerror = function() {
+            results.push({
+              source: file.webkitRelativePath || file.name,
+              bugType: 'Read error',
+              severity: 'Medium',
+              debugTime: '—',
+              priorityScore: 50,
+              rootCause: 'Could not read file',
+              delayRisk: 'Medium'
+            });
+            onFileDone();
+          };
+          reader.readAsText(file);
+        });
+      }
+      var picker = document.getElementById('file-picker');
+      if (picker) {
+        picker.addEventListener('change', function() {
+          var files = this.files;
+          if (!files || !files.length) return;
+          runAnalysis(files);
+        });
+      }
+      var folderPicker = document.getElementById('folder-picker');
+      if (folderPicker) {
+        folderPicker.addEventListener('change', function() {
+          var files = this.files;
+          if (!files || !files.length) return;
+          runAnalysis(files);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
